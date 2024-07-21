@@ -33,17 +33,32 @@ import static dev.langchain4j.model.openai.OpenAiChatModelName.GPT_4_O;
 
 
 /**
- * Yesterday,
+ * The SimpleRAG class demonstrates a simple Retrieval-Augmented Generation (RAG) system.
+ * It utilizes various components from the dev.langchain4j library to interact with documents,
+ * embeddings, and AI models for processing and generating responses based on user input.
+ * This example showcases the integration of different services and models to create a chat agent.
  */
 public class SimpleRAG {
-
+    /**
+     * The main method serves as the entry point for the application.
+     * It creates a SimpleAgent instance and enters a loop to process user input.
+     * The application logs user queries and checks for a "quit" command to exit.
+     *
+     * @param args Command line arguments passed to the program (not used).
+     */
     public static void main(String[] args) {
+        // Creation of a SimpleAgent instance.
         SimpleAgent agent = createSimpleAgent();
+
         try(Scanner scanner = new Scanner(System.in)){
             while (true){
+                // Prompting the user for input.
                 Logger.info("User: ");
-                String userQuery = scanner.nextLine();
                 
+                // Reading user input from the console.
+                String userQuery = scanner.nextLine();
+
+                // Checking if the user wants to quit the application.
                 if("quit".equalsIgnoreCase(userQuery)){
                     Logger.info("you quit the program.");
                     break;
@@ -56,31 +71,58 @@ public class SimpleRAG {
         }
     }
 
+    /**
+     * Retrieves the file path for a given file name located in the resources directory.
+     * This method uses the class loader to find the resource and converts the URL to a Path.
+     *
+     * @param fileName The name of the file to find.
+     * @return Path to the file in the resources directory.
+     * @throws RuntimeException if the URL to the file cannot be converted to a URI.
+     */
     private static Path getFilePath(String fileName){
         try{
+            // Attempt to get the URL of the file from the resources folder.
             URL fileUrl = SimpleRAG.class.getClassLoader().getResource(fileName);
             if (fileUrl == null) {
+                // Log a message if the file is not found.
                 Logger.info("File not found in resources.");
             }
+            // Log the file path for debugging purposes.
             Logger.debug("file path is: " + fileUrl.toURI().toString());
+            // Convert the URL to a Path and return it.
             return Paths.get(fileUrl.toURI());
             
         } catch (URISyntaxException e) {
+            // Log the error and throw a RuntimeException if the URL cannot be converted to a URI.
             Logger.error("error: ", e);
             throw new RuntimeException(e);
         }
     }
     
+    /**
+     * Creates and configures a SimpleAgent instance.
+     * This includes setting up the chat model, loading and parsing a document,
+     * splitting the document into segments, embedding these segments, and
+     * initializing the content retriever with an embedding store.
+     *
+     * @return A configured SimpleAgent instance.
+     */
     private static SimpleAgent createSimpleAgent() {
+        // Log the OpenAI API key for debugging purposes.
         Logger.debug(System.getenv("OPEN_AI_API_KEY"));
-        //System.getenv("OPEN_AI_API_KEY")
+    
+        // Initialize the chat model with the OpenAI API key and model name.
         ChatLanguageModel chatModel = OpenAiChatModel.builder().apiKey(System.getenv("OPEN_AI_API_KEY")).modelName(GPT_4_O).build();
         
+        // Retrieve the path to the document to be processed.
         Path documentPath = getFilePath("OpenAI launches GPT-4o mini, which will replace GPT-3.5 in ChatGPT  Ars Technica.md");
         Logger.info("Path: " + documentPath);
+
+        // Load and parse the document from the file system.
         DocumentParser documentParser = new TextDocumentParser();
         Document document = FileSystemDocumentLoader.loadDocument(documentPath, documentParser);
         
+        // Split the document into segments.
         DocumentSplitter splitter = DocumentSplitters.recursive(300, 0);
         List<TextSegment> segments = splitter.split(document);
         
@@ -93,11 +135,14 @@ public class SimpleRAG {
         //baseUrl: https://api.openai.com/v1
         EmbeddingModel embeddingModel = useOpenAIEmbeddingModel();
         
+        // Embed all segments of the document.
         List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
-
+        
+        // Initialize the embedding store and add all embeddings and their corresponding segments.
         EmbeddingStore<TextSegment> embeddingStore = new InMemoryEmbeddingStore<>();
         embeddingStore.addAll(embeddings, segments);
-
+        
+        // Configure the content retriever with the embedding store and model, setting the maximum results and minimum score.
         ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
             .embeddingStore(embeddingStore)
             .embeddingModel(embeddingModel)
@@ -105,15 +150,19 @@ public class SimpleRAG {
             .minScore(0.7)
             .build();
 
+        // Initializes a chat memory with a maximum of 10 messages.
         ChatMemory chatMemory = MessageWindowChatMemory.withMaxMessages(10);
-        
+
+        // Builds and returns a SimpleAgent instance configured with the chat model, content retriever, and chat memory.
         return AiServices.builder(SimpleAgent.class).chatLanguageModel(chatModel).contentRetriever(contentRetriever).chatMemory(chatMemory).build();
     }
-    
+
+    // Defines a method to initialize the OpenAI Embedding Model with an API key from the environment variables.
     private static EmbeddingModel useOpenAIEmbeddingModel(){
         return OpenAiEmbeddingModel.withApiKey(System.getenv("OPEN_AI_API_KEY"));
     }
     
+    // Defines the SimpleAgent interface with a method for answering queries.
     interface SimpleAgent{
         String answer(String query);
     }
